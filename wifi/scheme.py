@@ -1,6 +1,6 @@
 import re
 import itertools
-
+import time
 import wifi.subprocess_compat as subprocess
 from wifi.utils import ensure_file_exists, pass2psk
 from wifi.exceptions import ConnectionError
@@ -89,7 +89,7 @@ class Scheme(object):
         Returns the representation of a scheme that you would need
         in the /etc/network/interfaces file.
         """
-        iface = "iface {interface}-{name} inet dhcp".format(**vars(self))
+        iface = "iface {interface} inet dhcp".format(**vars(self))
         options = ''.join("\n    {k} {v}".format(k=k, v=v) for k, v in self.options.items())
         return iface + options + '\n'
 
@@ -142,7 +142,7 @@ class Scheme(object):
         """
         Deletes the configuration from the :attr:`interfaces` file.
         """
-        iface = "iface %s-%s inet dhcp" % (self.interface, self.name)
+        iface = "iface %s inet dhcp" % (self.interface)
         content = ''
         with open(self.interfaces, 'r') as f:
             skip = False
@@ -158,7 +158,8 @@ class Scheme(object):
 
     @property
     def iface(self):
-        return '{0}-{1}'.format(self.interface, self.name)
+        #return '{0}-{1}'.format(self.interface, self.name)
+		return '{0}'.format(self.interface)
 
     def as_args(self):
         args = list(itertools.chain.from_iterable(
@@ -171,8 +172,11 @@ class Scheme(object):
         Connects to the network as configured in this scheme.
         """
 
+        subprocess.check_output(['ifconfig', self.interface, 'up'], stderr=subprocess.STDOUT)
         subprocess.check_output(['/sbin/ifdown', self.interface], stderr=subprocess.STDOUT)
-        ifup_output = subprocess.check_output(['/sbin/ifup'] + self.as_args(), stderr=subprocess.STDOUT)
+        #ifup_output = subprocess.check_output(['/sbin/ifup'] + self.as_args(), stderr=subprocess.STDOUT)
+        time.sleep(1)
+        ifup_output = subprocess.check_output(['/sbin/ifup', self.interface], stderr=subprocess.STDOUT)
         ifup_output = ifup_output.decode('utf-8')
 
         return self.parse_ifup_output(ifup_output)
