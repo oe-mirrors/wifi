@@ -1,9 +1,8 @@
 import re
 import itertools
-
+import time
 import wifi.subprocess_compat as subprocess
-from pbkdf2 import PBKDF2
-from wifi.utils import ensure_file_exists
+from wifi.utils import ensure_file_exists, pass2psk
 from wifi.exceptions import ConnectionError
 
 
@@ -19,9 +18,10 @@ def configuration(cell, passkey=None):
             'wireless-channel': 'auto',
         }
     else:
-        if cell.encryption_type.startswith('wpa'):
+        if cell.encryption_type.startswith('wpa') and \
+                        'PSK' in cell.authentication_suites:
             if len(passkey) != 64:
-                passkey = PBKDF2(passkey, cell.ssid, 4096).hexread(32)
+                passkey = pass2psk(cell.ssid, passkey)
 
             return {
                 'wpa-ssid': cell.ssid,
@@ -29,7 +29,8 @@ def configuration(cell, passkey=None):
                 'wireless-channel': 'auto',
             }
         elif cell.encryption_type == 'wep':
-            # Pass key lengths in bytes for WEP depend on type of key and key length:
+            # Pass key lengths in bytes for WEP depend on type of key and key
+            # length:
             #
             #       64bit   128bit   152bit   256bit
             # hex     10      26       32       58
@@ -37,13 +38,14 @@ def configuration(cell, passkey=None):
             #
             # (source: https://en.wikipedia.org/wiki/Wired_Equivalent_Privacy)
             #
-            # ASCII keys need to be prefixed with an s: in the interfaces file in order to work with linux' wireless
-            # tools
+            # ASCII keys need to be prefixed with an s: in the interfaces file
+            # in order to work with linux' wireless tools
 
             ascii_lengths = (5, 13, 16, 29)
             if len(passkey) in ascii_lengths:
-                # we got an ASCII passkey here (otherwise the key length wouldn't match), we'll need to prefix that
-                # with s: in our config for the wireless tools to pick it up properly
+                # we got an ASCII passkey here (otherwise the key length
+                # wouldn't match), we'll need to prefix that with s: in our
+                # config for the wireless tools to pick it up properly
                 passkey = "s:" + passkey
 
             return {
@@ -87,7 +89,7 @@ class Scheme(object):
         Returns the representation of a scheme that you would need
         in the /etc/network/interfaces file.
         """
-        iface = "iface {interface}-{name} inet dhcp".format(**vars(self))
+        iface = "iface {interface} inet dhcp".format(**vars(self))
         options = ''.join("\n    {k} {v}".format(k=k, v=v) for k, v in self.options.items())
         return iface + options + '\n'
 
@@ -140,7 +142,7 @@ class Scheme(object):
         """
         Deletes the configuration from the :attr:`interfaces` file.
         """
-        iface = "iface %s-%s inet dhcp" % (self.interface, self.name)
+        iface = "iface %s inet dhcp" % (self.interface)
         content = ''
         with open(self.interfaces, 'r') as f:
             skip = False
@@ -156,7 +158,8 @@ class Scheme(object):
 
     @property
     def iface(self):
-        return '{0}-{1}'.format(self.interface, self.name)
+        #return '{0}-{1}'.format(self.interface, self.name)
+		return '{0}'.format(self.interface)
 
     def as_args(self):
         args = list(itertools.chain.from_iterable(
@@ -169,8 +172,11 @@ class Scheme(object):
         Connects to the network as configured in this scheme.
         """
 
+        subprocess.check_output(['ifconfig', self.interface, 'up'], stderr=subprocess.STDOUT)
         subprocess.check_output(['/sbin/ifdown', self.interface], stderr=subprocess.STDOUT)
-        ifup_output = subprocess.check_output(['/sbin/ifup'] + self.as_args(), stderr=subprocess.STDOUT)
+        #ifup_output = subprocess.check_output(['/sbin/ifup'] + self.as_args(), stderr=subprocess.STDOUT)
+        time.sleep(1)
+        ifup_output = subprocess.check_output(['/sbin/ifup', self.interface], stderr=subprocess.STDOUT)
         ifup_output = ifup_output.decode('utf-8')
 
         return self.parse_ifup_output(ifup_output)

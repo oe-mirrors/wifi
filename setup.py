@@ -1,7 +1,8 @@
 #!/usr/bin/env python
-from setuptools import setup
 import os
 import sys
+
+from setuptools import setup
 
 __doc__ = """
 Command line tool and library wrappers around iwlist and
@@ -19,13 +20,15 @@ install_requires = [
 ]
 try:
     import argparse
-except:
+except ImportError:
     install_requires.append('argparse')
+else:
+    del argparse
 
-version = '1.0.0'
+version = '0.8.0rc1'
 
 should_install_cli = os.environ.get('WIFI_INSTALL_CLI') not in ['False', '0']
-command_name = os.environ.get('WIFI_CLI_NAME', 'wifi')
+command_name = os.environ.get('WIFI_CLI_NAME', 'pywifi')
 
 if command_name == 'wifi.py':
     print(
@@ -42,18 +45,20 @@ if should_install_cli:
     entry_points['console_scripts'] = [
         '{command} = wifi.cli:main'.format(command=command_name),
     ]
-    # make sure we actually have write access to the target folder and if not don't
-    # include it in data_files
+    # make sure we actually have write access to the target folder and if not do
+    # not include it in data_files.
     if os.access('/etc/bash_completion.d/', os.W_OK):
-        data_files.append(('/etc/bash_completion.d/', ['extras/wifi-completion.bash']))
+        data_files.append(
+            ('/etc/bash_completion.d/', ['extras/wifi-completion.bash'])
+        )
     else:
         print("Not installing bash completion because of lack of permissions.")
 
 setup(
     name='wifi',
     version=version,
-    author='Rocky Meza, Gavin Wahl',
-    author_email='rockymeza@gmail.com',
+    author='Melvyn Sopacua, Rocky Meza, Gavin Wahl',
+    author_email='melvyn@unikotec.com',
     description=__doc__,
     long_description='\n\n'.join([read('README.rst'), read('CHANGES.rst')]),
     packages=['wifi'],
@@ -68,9 +73,11 @@ setup(
         "Operating System :: POSIX :: Linux",
         "Environment :: Console",
         "Programming Language :: Python",
-        "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
-        "Programming Language :: Python :: 3.3",
+        "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
     ],
-    data_files=data_files
+    data_files=data_files,
+    zip_safe=False,
 )

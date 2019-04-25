@@ -1,81 +1,116 @@
 from unittest import TestCase
 
-from wifi.scan import Cell
 from wifi.exceptions import InterfaceError
+from wifi.scan import Cell
 
 
 class IWListParserTest(TestCase):
     def test_no_encryption(self):
         cell = Cell.from_string(IWLIST_SCAN_NO_ENCRYPTION)
         self.assertFalse(cell.encrypted)
-        self.assertEqual(cell.ssid, 'My Wireless Network')
-        self.assertEqual(cell.signal, -51)
-        self.assertEqual(cell.quality, '59/70')
-        self.assertEqual(cell.frequency, '2.437 GHz')
-        self.assertEqual(cell.mode, 'Master')
-        self.assertEqual(cell.channel, 6)
+        self.assertEqual('My Wireless Network', cell.ssid)
+        self.assertEqual(-51, cell.signal)
+        self.assertEqual('59/70', cell.quality)
+        self.assertEqual('2.437 GHz', cell.frequency)
+        self.assertEqual('Master', cell.mode)
+        self.assertEqual(6, cell.channel)
 
     def test_wep(self):
         cell = Cell.from_string(IWLIST_SCAN_WEP)
         self.assertTrue(cell.encrypted)
-        self.assertEqual(cell.encryption_type, 'wep')
+        self.assertEqual('wep', cell.encryption_type)
 
     def test_wpa2(self):
         cell = Cell.from_string(IWLIST_SCAN_WPA2)
         self.assertTrue(cell.encrypted)
-        self.assertEqual(cell.encryption_type, 'wpa2')
+        self.assertEqual('wpa2', cell.encryption_type)
+
+    def test_wpa_wpa2(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA_WPA2)
+        self.assertTrue(cell.encrypted)
+        self.assertEqual('wpa/wpa2', cell.encryption_type)
+
+    def test_wpa2_enterprise(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA2_ENTERPRISE)
+        self.assertTrue(cell.encrypted)
+        self.assertEqual('wpa2-enterprise', cell.encryption_type)
+
+    def test_wpa_enterprise(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA_ENTERPRISE)
+        self.assertTrue(cell.encrypted)
+        self.assertEqual('wpa-enterprise', cell.encryption_type)
 
     def test_wpa1(self):
         cell = Cell.from_string(IWLIST_SCAN_WPA1)
         self.assertTrue(cell.encrypted)
-        self.assertEqual(cell.encryption_type, 'wpa')
+        self.assertEqual('wpa', cell.encryption_type)
 
     def test_alternative_iwlist_output(self):
         # https://github.com/rockymeza/wifi/issues/12
         cell = Cell.from_string(ALTERNATIVE_OUTPUT)
-        self.assertEqual(cell.quality, '78/100')
-        self.assertEqual(cell.signal, -92)
+        self.assertEqual('78/100', cell.quality)
+        self.assertEqual(-92, cell.signal)
 
     def test_signal_level_out_of_sixty(self):
         cell = Cell.from_string(ALTERNATIVE_OUTPUT2)
-        self.assertEqual(cell.signal, -71)
+        self.assertEqual(-71, cell.signal)
 
     def test_noname_cell(self):
         cell = Cell.from_string(NONAME_WIRELESS_NETWORK)
-        self.assertEqual(cell.ssid, '')
+        self.assertEqual('', cell.ssid)
 
     def test_no_channel_output(self):
-        # https://github.com/rockymeza/wifi/issues/24
         cell = Cell.from_string(NO_CHANNEL_OUTPUT)
-        self.assertEqual(cell.channel, 11)
+        self.assertEqual(11, cell.channel)
 
     def test_list_index_error(self):
-        # https://github.com/rockymeza/wifi/issues/42
         cell = Cell.from_string(LIST_INDEX_ERROR)
 
     def test_frequency_no_channel_output(self):
-        # https://github.com/rockymeza/wifi/issues/39
         cell = Cell.from_string(FREQUENCY_NO_CHANNEL_OUTPUT)
-        self.assertEqual(cell.channel, 149)
+        self.assertEqual(149, cell.channel)
 
     def test_absolute_quality(self):
         # https://github.com/rockymeza/wifi/pull/45
         cell = Cell.from_string(ABSOLUTE_QUALITY)
-        self.assertEqual(cell.quality, '38/100')
-        self.assertEqual(cell.signal, -92)
+        self.assertEqual('38/100', cell.quality)
+        self.assertEqual(-92, cell.signal)
 
     def test_blank_ssid(self):
-        # https://github.com/rockymeza/wifi/issues/86
         cell = Cell.from_string(NO_SSID_AT_ALL)
-        self.assertEqual(cell.ssid, None)
+        self.assertEqual(None, cell.ssid)
 
     def test_noise_no_data(self):
         cell = Cell.from_string(IWLIST_SCAN_NO_ENCRYPTION)
-        self.assertEqual(cell.noise, None)
+        self.assertEqual(None, cell.noise)
 
     def test_noise_data_present(self):
         cell = Cell.from_string(LIST_INDEX_ERROR)
-        self.assertEqual(cell.noise, -92)
+        self.assertEqual(-92, cell.noise)
+
+    def test_bssid(self):
+        # This seems like a useless test, yet if bssid is refactored and not
+        # in sync with address attribute, this will alert us.
+        cell = Cell.from_string(ALTERNATIVE_OUTPUT)
+        self.assertEqual(cell.address, cell.bssid)
+        cell.bssid = 'AC:22:05:25:3B:6A'
+        self.assertEqual('AC:22:05:25:3B:6A', cell.address)
+
+    def test_pairwise_ciphers(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA_WPA2_DUAL_CIPHERS)
+        self.assertListEqual(['CCMP', 'TKIP'], cell.pairwise_ciphers)
+
+    def test_group_cipher(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA2)
+        self.assertEqual('CCMP', cell.group_cipher)
+
+    def test_normalized_frequency(self):
+        cell = Cell.from_string(FREQUENCY_5G)
+        self.assertEqual(cell.frequency_norm, '5Ghz')
+        cell = Cell.from_string(IWLIST_SCAN_WPA2)
+        self.assertEqual(cell.frequency_norm, '2.4Ghz')
+        cell = Cell.from_string(FREQUENCY_UNSUPPORTED)
+        self.assertIsNone(cell.frequency_norm)
 
 
 class ScanningTest(TestCase):
@@ -83,7 +118,26 @@ class ScanningTest(TestCase):
         self.assertRaises(InterfaceError, Cell.all, 'fake-interface')
 
 
-IWLIST_SCAN_NO_ENCRYPTION = """Cell 02 - Address: 38:83:45:CC:58:74
+class WpaSupCfgWriterTest(TestCase):
+    def test_wpa1_psk(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA1)
+        self.assertEqual(WSCFG_WPA1, cell.gen_wpasup_cfg('supersecret'))
+
+    def test_wpa2_psk(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA2)
+        self.assertEqual(WSCFG_WPA2, cell.gen_wpasup_cfg('supersecret'))
+
+    def test_open_ap(self):
+        cell = Cell.from_string(IWLIST_SCAN_NO_ENCRYPTION)
+        self.assertEqual(WSCFG_OPEN, cell.gen_wpasup_cfg())
+
+    def test_unimplemented(self):
+        cell = Cell.from_string(IWLIST_SCAN_WPA_ENTERPRISE)
+        with self.assertRaises(NotImplementedError):
+            cell.gen_wpasup_cfg('supersecret')
+
+
+IWLIST_SCAN_NO_ENCRYPTION = """Cell 02 - Address: 
                     Channel:6
                     Frequency:2.437 GHz (Channel 6)
                     Quality=59/70  Signal level=-51 dBm  
@@ -95,21 +149,9 @@ IWLIST_SCAN_NO_ENCRYPTION = """Cell 02 - Address: 38:83:45:CC:58:74
                     Mode:Master
                     Extra:tsf=00000079fc961317
                     Extra: Last beacon: 60ms ago
-                    IE: Unknown: 001754502D4C494E4B5F506F636B657441505F434335383734
-                    IE: Unknown: 010882848B960C121824
-                    IE: Unknown: 030106
-                    IE: Unknown: 0706555320010D14
-                    IE: Unknown: 2A0100
-                    IE: Unknown: 32043048606C
-                    IE: Unknown: 2D1A6E1003FF00000000000000000000000000000000000000000000
-                    IE: Unknown: 331A6E1003FF00000000000000000000000000000000000000000000
-                    IE: Unknown: 3D1606051100000000000000000000000000000000000000
-                    IE: Unknown: 341606051100000000000000000000000000000000000000
-                    IE: Unknown: DD180050F2020101010003A4000027A4000042435E0062322F00
-                    IE: Unknown: DD0900037F01010000FF7F
 """
 
-IWLIST_SCAN_WEP = """Cell 01 - Address: 00:21:27:35:1B:E8
+IWLIST_SCAN_WEP = """Cell 01 - Address: 
                     Channel:6
                     Frequency:2.437 GHz (Channel 6)
                     Quality=36/70  Signal level=-74 dBm  
@@ -121,36 +163,20 @@ IWLIST_SCAN_WEP = """Cell 01 - Address: 00:21:27:35:1B:E8
                     Mode:Master
                     Extra:tsf=00000022fa7f11cd
                     Extra: Last beacon: 60ms ago
-                    IE: Unknown: 00025348
-                    IE: Unknown: 010882848B960C183048
-                    IE: Unknown: 030106
-                    IE: Unknown: 0706434E20010D14
-                    IE: Unknown: 2A0100
-                    IE: Unknown: 32041224606C
-                    IE: Unknown: DD0900037F01010008FF7F
-                    IE: Unknown: DD1A00037F0301000000002127351BE8022127351BE864002C010808
 """
 
-IWLIST_SCAN_WPA2 = """Cell 08 - Address: 00:22:B0:98:5E:77
+IWLIST_SCAN_WPA_WPA2 = """Cell 08 - Address: 
                     Channel:1
                     Frequency:2.412 GHz (Channel 1)
                     Quality=42/70  Signal level=-68 dBm  
                     Encryption key:on
-                    ESSID:"WPA2 network"
+                    ESSID:"WPA/WPA2 network"
                     Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 9 Mb/s
                               18 Mb/s; 36 Mb/s; 54 Mb/s
                     Bit Rates:6 Mb/s; 12 Mb/s; 24 Mb/s; 48 Mb/s
                     Mode:Master
                     Extra:tsf=000000029170ed29
                     Extra: Last beacon: 24ms ago
-                    IE: Unknown: 00096265616E7472656531
-                    IE: Unknown: 010882848B961224486C
-                    IE: Unknown: 030101
-                    IE: Unknown: 2A0100
-                    IE: Unknown: 32040C183060
-                    IE: Unknown: 2D1A6E1013FFFF0000010000000000000000000000000C0000000000
-                    IE: Unknown: 3D1601050700000000000000000000000000000000000000
-                    IE: Unknown: 3E0100
                     IE: WPA Version 1
                         Group Cipher : TKIP
                         Pairwise Ciphers (1) : TKIP
@@ -159,18 +185,84 @@ IWLIST_SCAN_WPA2 = """Cell 08 - Address: 00:22:B0:98:5E:77
                         Group Cipher : TKIP
                         Pairwise Ciphers (1) : TKIP
                         Authentication Suites (1) : PSK
-                    IE: Unknown: DD180050F2020101000003A4000027A4000042435E0062322F00
-                    IE: Unknown: 7F0101
-                    IE: Unknown: DD07000C4304000000
-                    IE: Unknown: 0706474220010D10
-                    IE: Unknown: DD1E00904C336E1013FFFF0000010000000000000000000000000C0000000000
-                    IE: Unknown: DD1A00904C3401050700000000000000000000000000000000000000
-                    IE: Unknown: DD050050F20500
-                    IE: Unknown: DD750050F204104A00011010440001021041000100103B00010310470010C59BF13CE0C57AA1476C0022B0985E7710210006442D4C696E6B102300074449522D363035102400074449522D3630351042000830303030303030301054000800060050F2040001101100074449522D36303510080002008E
+                    """
+IWLIST_SCAN_WPA_WPA2_DUAL_CIPHERS = """Cell 03 - Address: 98:F5:37:59:55:EC
+                    Channel:1
+                    Frequency:2.412 GHz (Channel 1)
+                    Quality=25/70  Signal level=-85 dBm
+                    Encryption key:on
+                    ESSID:"H220N5955EC"
+                    Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+                              24 Mb/s; 36 Mb/s; 54 Mb/s
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 48 Mb/s
+                    Mode:Master
+                    Extra:tsf=0000000000000000
+                    Extra: Last beacon: 70ms ago
+                    IE: IEEE 802.11i/WPA2 Version 1
+                        Group Cipher : TKIP
+                        Pairwise Ciphers (2) : CCMP TKIP
+                        Authentication Suites (1) : PSK
+                    IE: WPA Version 1
+                        Group Cipher : TKIP
+                        Pairwise Ciphers (2) : CCMP TKIP
+                        Authentication Suites (1) : PSK
+"""
+IWLIST_SCAN_WPA2 = """Cell 02 - Adress:
+                    Channel:1
+                    Frequency:2.412 GHz (Channel 1)
+                    Quality=70/70  Signal level=-25 dBm
+                    Encryption key:on
+                    ESSID:"WPA2"
+                    Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+                              36 Mb/s; 48 Mb/s; 54 Mb/s
+                    Mode:Master
+                    Extra:tsf=000001a12fade963
+                    Extra: Last beacon: 10ms ago
+                    IE: IEEE 802.11i/WPA2 Version 1
+                        Group Cipher : CCMP
+                        Pairwise Ciphers (1) : CCMP
+                        Authentication Suites (1) : PSK
+"""
+
+IWLIST_SCAN_WPA2_ENTERPRISE = """Cell 04 - Address: 
+                    Channel:1
+                    Frequency:2.412 GHz (Channel 1)
+                    Quality=42/70  Signal level=-68 dBm
+                    Encryption key:on
+                    ESSID:"WPA2-Enterprise"
+                    Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+                              24 Mb/s; 36 Mb/s; 54 Mb/s
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 48 Mb/s
+                    Mode:Master
+                    Extra:tsf=0000000744e298fd
+                    Extra: Last beacon: 10ms ago
+                    IE: IEEE 802.11i/WPA2 Version 1
+                        Group Cipher : TKIP
+                        Pairwise Ciphers (2) : CCMP TKIP
+                        Authentication Suites (1) : 802.1x
+"""
+
+IWLIST_SCAN_WPA_ENTERPRISE = """Cell 04 - Address: 
+                    Channel:1
+                    Frequency:2.412 GHz (Channel 1)
+                    Quality=42/70  Signal level=-68 dBm
+                    Encryption key:on
+                    ESSID:"WPA2-Enterprise"
+                    Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 18 Mb/s
+                              24 Mb/s; 36 Mb/s; 54 Mb/s
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 48 Mb/s
+                    Mode:Master
+                    Extra:tsf=0000000744e298fd
+                    Extra: Last beacon: 10ms ago
+                    IE: IEEE 802.11i/WPA
+                        Group Cipher : TKIP
+                        Pairwise Ciphers (2) : CCMP TKIP
+                        Authentication Suites (1) : 802.1x
 """
 
 IWLIST_SCAN_WPA1 = """Cell 01 - Address: 
-                    ESSID:
+                    ESSID: WPA1
                     Protocol:IEEE 802.11bg
                     Mode:Master
                     Frequency:2.457 GHz (Channel 10)
@@ -314,4 +406,60 @@ NO_SSID_AT_ALL = """Cell 10 - Address: 02:CA:FE:CA:CA:40
                     IE: Unknown: 2D1ACE111BFF00000000000000000000000100000000000000000000
                     IE: Unknown: 3D16050000000000FF000000000000000000000000000000
                     IE: Unknown: DD070050F202000100
+"""
+FREQUENCY_5G = """Cell 08 - Address: AC:22:05:25:3B:5B
+                    Channel:100
+                    Frequency:5.5 GHz (Channel 100)
+                    Quality=50/70  Signal level=-60 dBm
+                    Encryption key:on
+                    ESSID:"TestWifi3827"
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+                              36 Mb/s; 48 Mb/s; 54 Mb/s
+                    Mode:Master
+                    Extra:tsf=0000008a28a3e342
+                    Extra: Last beacon: 3224ms ago
+                    IE: IEEE 802.11i/WPA2 Version 1
+                        Group Cipher : CCMP
+                        Pairwise Ciphers (1) : CCMP
+                        Authentication Suites (1) : PSK
+"""
+FREQUENCY_UNSUPPORTED = """Cell 08 - Address: AC:22:05:25:3B:5B
+                    Channel:100
+                    Frequency:3.6575 GHz (Channel 131)
+                    Quality=50/70  Signal level=-60 dBm
+                    Encryption key:on
+                    ESSID:"TestWifi3827"
+                    Bit Rates:6 Mb/s; 9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s
+                              36 Mb/s; 48 Mb/s; 54 Mb/s
+                    Mode:Master
+                    Extra:tsf=0000008a28a3e342
+                    Extra: Last beacon: 3224ms ago
+                    IE: Unknown: 000C5A6967676F43323835373132
+                    IE: Unknown: 01088C129824B048606C
+                    IE: Unknown: 030164
+                    IE: Unknown: 200103
+                    IE: IEEE 802.11i/WPA2 Version 1
+                        Group Cipher : CCMP
+                        Pairwise Ciphers (1) : CCMP
+                        Authentication Suites (1) : PSK
+
+"""
+WSCFG_WPA1 = """network={
+    ssid="WPA1"
+    psk=a5e060ee3b1cb4b4f18b02b99a52d0ae037e90e428101eb8bae305580522e7be
+    key_mgmt=WPA-PSK
+    # bssid=None
+}
+"""
+WSCFG_WPA2 = """network={
+    ssid="WPA2"
+    psk=2f14acebcf8e08d502f8d83d22a6addc92275f3e940c379a24f340c0705ebfee
+    key_mgmt=WPA-PSK
+    # bssid=None
+}
+"""
+WSCFG_OPEN = """network={
+    ssid="My Wireless Network"
+    key_mgmt=NONE
+}
 """
