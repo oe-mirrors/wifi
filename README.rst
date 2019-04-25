@@ -1,3 +1,13 @@
+Wifi module forked and modified for Raspberry Pi 3 .
+Fixes implemented to make it work with Raspbery Pi 3.
+
+Remove any existing pip installation for this library.
+Use python setup.py install.
+
+- (jjp) Jeff Pakingan
+
+---- Previous notes by the original author below ----
+
 **Note:** This project is unmaintained. While I would love to keep up the
 development on this project, it is difficult for me for several reasons:
 
