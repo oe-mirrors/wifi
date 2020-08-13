@@ -69,7 +69,7 @@ class Cell(object):
         try:
             iwlist_scan = command(with_stderr=True)
         except subprocess.CalledProcessError as e:
-            raise InterfaceError(e.output.strip())
+            print(e.output.strip())
 
         iwlist_scan = iwlist_scan.decode('utf-8')
         cells = map(Cell.from_string, cells_re.split(iwlist_scan)[1:])
